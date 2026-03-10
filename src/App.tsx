@@ -289,6 +289,7 @@ function AdminLogin({ onLogin }: { onLogin: (user: string, pass: string) => void
 
 function CustomerView({ cities, settings, images, products }: { cities: City[], settings: AppSettings, images: ProductImage[], products: Product[], key?: string }) {
   const [step, setStep] = useState<'home' | 'form' | 'success'>('home');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     whatsapp: '',
@@ -300,8 +301,9 @@ function CustomerView({ cities, settings, images, products }: { cities: City[], 
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
 
   const getWhatsAppLink = () => {
+    const cleanNumber = settings.whatsapp_number.replace(/\D/g, '');
     const text = `Olá! Fiz uma reserva de ${formData.product} (${formData.quantity} unidades) para ${selectedCity?.name}. Meu nome é ${formData.name}. Segue o comprovante do sinal de R$ ${settings.signal_value}.`;
-    return `https://wa.me/${settings.whatsapp_number}?text=${encodeURIComponent(text)}`;
+    return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(text)}`;
   };
 
   useEffect(() => {
@@ -311,261 +313,328 @@ function CustomerView({ cities, settings, images, products }: { cities: City[], 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formData.name.trim()) {
+      alert('Por favor, informe seu nome.');
+      return;
+    }
+    if (!formData.whatsapp.trim()) {
+      alert('Por favor, informe seu WhatsApp.');
+      return;
+    }
+    if (!formData.city_id) {
+      alert('Por favor, selecione uma cidade.');
+      return;
+    }
     if (!formData.product) {
       alert('Por favor, selecione uma opção de reserva.');
       return;
     }
+    
+    setIsSubmitting(true);
     try {
       const res = await fetch('/api/reservations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          quantity: parseInt(formData.quantity.toString()) || 1
+        })
       });
-      if (res.ok) setStep('success');
+      
+      if (res.ok) {
+        setStep('success');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Erro no servidor' }));
+        alert(`Erro ao enviar reserva: ${errorData.error || 'Erro desconhecido'}`);
+      }
     } catch (err) {
-      alert('Erro ao enviar reserva');
+      console.error('Reservation error:', err);
+      alert('Erro de conexão ao enviar reserva. Verifique sua internet.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (step === 'home') {
-    return (
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="space-y-12"
-      >
-        <section className="text-center space-y-6 py-12">
-          <motion.div 
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="inline-block px-4 py-1.5 bg-brand-caramel/10 text-brand-caramel rounded-full text-[10px] font-bold uppercase tracking-widest"
-          >
-            Confeitaria Artesanal
-          </motion.div>
-          <h2 className="serif text-6xl md:text-7xl font-bold text-brand-brown leading-tight">
-            A autêntica <span className="italic text-brand-caramel">Torta de Manteiga Escocesa</span>.
-          </h2>
-          <p className="max-w-2xl mx-auto text-lg text-brand-ink/70 leading-relaxed">
-            {settings.about_text}
-          </p>
-          <div className="pt-8">
-            <button 
-              onClick={() => setStep('form')}
-              className="bg-brand-brown text-brand-gold px-12 py-5 rounded-full font-bold text-lg shadow-2xl shadow-brand-brown/30 hover:scale-105 transition-all flex items-center gap-3 mx-auto"
-            >
-              Fazer Reserva
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {images.map((img, i) => (
-            <motion.div 
-              key={img.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="aspect-[3/4] rounded-[32px] overflow-hidden shadow-lg border-4 border-white"
-            >
-              <img src={img.url} alt={img.alt} className="w-full h-full object-cover hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
-            </motion.div>
-          ))}
-        </section>
-      </motion.div>
-    );
-  }
-
-  if (step === 'success') {
-    return (
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-lg mx-auto bg-white p-10 rounded-[40px] shadow-2xl border border-brand-brown/5 text-center"
-      >
-        <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8">
-          <CheckCircle2 size={40} />
-        </div>
-        <h2 className="serif text-4xl font-bold text-brand-brown mb-4">Reserva Registrada!</h2>
-        <p className="text-brand-ink/70 mb-8 leading-relaxed">
-          {settings.payment_message}
-        </p>
-
-        <div className="bg-brand-cream p-6 rounded-3xl border-2 border-dashed border-brand-caramel/30 mb-8 space-y-4">
-          <div className="flex justify-between items-center text-sm">
-            <span className="font-bold text-brand-brown/60 uppercase tracking-wider">Valor do Sinal</span>
-            <span className="text-2xl font-bold text-brand-caramel">R$ {settings.signal_value}</span>
-          </div>
-          <div className="pt-4 border-t border-brand-caramel/10">
-            <span className="block text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 mb-2">Chave PIX</span>
-            <div className="bg-white px-4 py-3 rounded-xl font-mono text-brand-brown border border-brand-brown/5 select-all cursor-pointer">
-              {settings.pix_key}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <a 
-            href={getWhatsAppLink()} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="w-full bg-green-600 text-white py-5 rounded-2xl font-bold shadow-lg shadow-green-600/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
-          >
-            <MessageCircle size={24} />
-            Enviar Comprovante
-          </a>
-          <button 
-            onClick={() => setStep('home')}
-            className="text-brand-brown/60 font-bold hover:text-brand-brown transition-colors"
-          >
-            Voltar ao Início
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
-
   return (
-    <motion.div 
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="max-w-2xl mx-auto"
-    >
-      <div className="bg-white p-8 md:p-12 rounded-[40px] shadow-2xl border border-brand-brown/5">
-        <div className="flex items-center gap-4 mb-10">
-          <button onClick={() => setStep('home')} className="p-2 hover:bg-brand-cream rounded-full transition-colors">
-            <X size={24} />
-          </button>
-          <h2 className="serif text-3xl font-bold text-brand-brown">Nova Reserva</h2>
-        </div>
-
-        <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-6">
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Nome Completo</label>
-            <div className="relative">
-              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-caramel" size={18} />
-              <input 
-                required
-                type="text"
-                placeholder="Seu nome"
-                className="w-full pl-12 pr-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all"
-                value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">WhatsApp</label>
-            <div className="relative">
-              <MessageCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-caramel" size={18} />
-              <input 
-                required
-                type="tel"
-                placeholder="(00) 00000-0000"
-                className="w-full pl-12 pr-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all"
-                value={formData.whatsapp}
-                onChange={e => setFormData({...formData, whatsapp: e.target.value})}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Cidade</label>
-            <div className="relative">
-              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-caramel" size={18} />
-              <select 
-                required
-                className="w-full pl-12 pr-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all appearance-none"
-                value={formData.city_id}
-                onChange={e => setFormData({...formData, city_id: e.target.value})}
-              >
-                <option value="">Selecione</option>
-                {cities.map(city => (
-                  <option key={city.id} value={city.id}>{city.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-brown/30 pointer-events-none" size={18} />
-            </div>
-          </div>
-
-          <AnimatePresence>
-            {selectedCity && (
+    <div className="relative">
+      <AnimatePresence mode="wait">
+        {step === 'home' && (
+          <motion.div 
+            key="home"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-12"
+          >
+            <section className="text-center space-y-6 py-12">
               <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="md:col-span-2 overflow-hidden"
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="inline-block px-4 py-1.5 bg-brand-caramel/10 text-brand-caramel rounded-full text-[10px] font-bold uppercase tracking-widest"
               >
-                <div className="bg-brand-gold/5 p-4 rounded-2xl border border-brand-gold/20 flex flex-col gap-2 text-xs">
-                  <div className="flex items-center gap-2 text-brand-brown/70">
-                    <MapPin size={14} className="text-brand-caramel" />
-                    <strong>Local:</strong> {selectedCity.location}
-                  </div>
-                  <div className="flex items-center gap-2 text-brand-brown/70">
-                    <Clock size={14} className="text-brand-caramel" />
-                    <strong>Horário:</strong> {selectedCity.hours}
+                Confeitaria Artesanal
+              </motion.div>
+              <h2 className="serif text-6xl md:text-7xl font-bold text-brand-brown leading-tight">
+                A autêntica <span className="italic text-brand-caramel">Torta de Manteiga Escocesa</span>.
+              </h2>
+              <p className="max-w-2xl mx-auto text-lg text-brand-ink/70 leading-relaxed">
+                {settings.about_text}
+              </p>
+              <div className="pt-8">
+                <button 
+                  onClick={() => setStep('form')}
+                  className="bg-brand-brown text-brand-gold px-12 py-5 rounded-full font-bold text-lg shadow-2xl shadow-brand-brown/30 hover:scale-105 transition-all flex items-center gap-3 mx-auto"
+                >
+                  Fazer Reserva
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            </section>
+
+            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {images.map((img, i) => (
+                <motion.div 
+                  key={img.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  className="aspect-[3/4] rounded-[32px] overflow-hidden shadow-lg border-4 border-white"
+                >
+                  <img src={img.url || null} alt={img.alt} className="w-full h-full object-cover hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                </motion.div>
+              ))}
+            </section>
+          </motion.div>
+        )}
+
+        {step === 'form' && (
+          <motion.div 
+            key="form"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="max-w-2xl mx-auto"
+          >
+            <div className="bg-white p-8 md:p-12 rounded-[40px] shadow-2xl border border-brand-brown/5">
+              <div className="flex items-center gap-4 mb-10">
+                <button onClick={() => setStep('home')} className="p-2 hover:bg-brand-cream rounded-full transition-colors">
+                  <X size={24} />
+                </button>
+                <h2 className="serif text-3xl font-bold text-brand-brown">Nova Reserva</h2>
+              </div>
+
+              <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Nome Completo</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-caramel" size={18} />
+                    <input 
+                      required
+                      type="text"
+                      placeholder="Seu nome"
+                      className="w-full pl-12 pr-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                    />
                   </div>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
 
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Opções de Reserva</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {products.map((product) => (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={() => setFormData({...formData, product: product.name})}
-                  className={`flex flex-col items-start p-4 rounded-2xl border transition-all text-left ${
-                    formData.product === product.name 
-                      ? 'bg-brand-brown text-brand-gold border-brand-brown shadow-lg' 
-                      : 'bg-brand-cream/50 border-brand-brown/10 text-brand-brown hover:border-brand-caramel/30'
-                  }`}
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">WhatsApp</label>
+                  <div className="relative">
+                    <MessageCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-caramel" size={18} />
+                    <input 
+                      required
+                      type="tel"
+                      placeholder="(00) 00000-0000"
+                      className="w-full pl-12 pr-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all"
+                      value={formData.whatsapp}
+                      onChange={e => setFormData({...formData, whatsapp: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Cidade</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-caramel" size={18} />
+                    <select 
+                      required
+                      className="w-full pl-12 pr-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all appearance-none"
+                      value={formData.city_id}
+                      onChange={e => setFormData({...formData, city_id: e.target.value})}
+                    >
+                      <option value="">Selecione</option>
+                      {cities.map(city => (
+                        <option key={city.id} value={city.id}>{city.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-brown/30 pointer-events-none" size={18} />
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {selectedCity && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="md:col-span-2 overflow-hidden"
+                    >
+                      <div className="bg-brand-gold/5 p-4 rounded-2xl border border-brand-gold/20 flex flex-col gap-2 text-xs">
+                        <div className="flex items-center gap-2 text-brand-brown/70">
+                          <MapPin size={14} className="text-brand-caramel" />
+                          <strong>Local:</strong> {selectedCity.location}
+                        </div>
+                        <div className="flex items-center gap-2 text-brand-brown/70">
+                          <Clock size={14} className="text-brand-caramel" />
+                          <strong>Horário:</strong> {selectedCity.hours}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Opções de Reserva</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {products.map((product) => (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => setFormData({...formData, product: product.name})}
+                        className={`flex flex-col items-start p-4 rounded-2xl border transition-all text-left ${
+                          formData.product === product.name 
+                            ? 'bg-brand-brown text-brand-gold border-brand-brown shadow-lg' 
+                            : 'bg-brand-cream/50 border-brand-brown/10 text-brand-brown hover:border-brand-caramel/30'
+                        }`}
+                      >
+                        <span className="text-xs font-bold leading-tight mb-1">{product.name}</span>
+                        <span className={`text-[10px] font-mono ${formData.product === product.name ? 'text-brand-gold/70' : 'text-brand-caramel'}`}>
+                          R$ {product.price}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Quantidade</label>
+                  <input 
+                    required
+                    type="number"
+                    min="1"
+                    className="w-full px-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all"
+                    value={Number.isNaN(formData.quantity) ? '' : formData.quantity}
+                    onChange={e => setFormData({...formData, quantity: e.target.value === '' ? '' : parseInt(e.target.value)})}
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Observações (Opcional)</label>
+                  <textarea 
+                    placeholder="Algum detalhe especial?"
+                    className="w-full px-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all min-h-[100px]"
+                    value={formData.observations}
+                    onChange={e => setFormData({...formData, observations: e.target.value})}
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`md:col-span-2 w-full bg-brand-brown text-brand-gold py-5 rounded-2xl font-bold text-lg shadow-xl shadow-brand-brown/20 transition-all flex items-center justify-center gap-3 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:translate-y-[-2px]'}`}
                 >
-                  <span className="text-xs font-bold leading-tight mb-1">{product.name}</span>
-                  <span className={`text-[10px] font-mono ${formData.product === product.name ? 'text-brand-gold/70' : 'text-brand-caramel'}`}>
-                    R$ {product.price}
-                  </span>
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-brand-gold/30 border-t-brand-gold rounded-full animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      Confirmar Reserva
+                      <ChevronRight size={20} />
+                    </>
+                  )}
                 </button>
-              ))}
+              </form>
             </div>
-          </div>
+          </motion.div>
+        )}
 
-          <div className="space-y-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Quantidade</label>
-            <input 
-              required
-              type="number"
-              min="1"
-              className="w-full px-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all"
-              value={Number.isNaN(formData.quantity) ? '' : formData.quantity}
-              onChange={e => setFormData({...formData, quantity: e.target.value === '' ? '' : parseInt(e.target.value)})}
-            />
-          </div>
-
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">Observações (Opcional)</label>
-            <textarea 
-              placeholder="Algum detalhe especial?"
-              className="w-full px-4 py-4 bg-brand-cream/50 border border-brand-brown/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 transition-all min-h-[100px]"
-              value={formData.observations}
-              onChange={e => setFormData({...formData, observations: e.target.value})}
-            />
-          </div>
-
-          <button 
-            type="submit"
-            className="md:col-span-2 w-full bg-brand-brown text-brand-gold py-5 rounded-2xl font-bold text-lg shadow-xl shadow-brand-brown/20 hover:translate-y-[-2px] transition-all flex items-center justify-center gap-3"
+        {step === 'success' && (
+          <motion.div 
+            key="success"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="max-w-lg mx-auto bg-white p-10 rounded-[40px] shadow-2xl border border-brand-brown/5 text-center"
           >
-            Confirmar Reserva
-            <ChevronRight size={20} />
-          </button>
-        </form>
-      </div>
-    </motion.div>
+            <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8">
+              <CheckCircle2 size={40} />
+            </div>
+            <h2 className="serif text-4xl font-bold text-brand-brown mb-4">Reserva Registrada!</h2>
+            <p className="text-brand-ink/70 mb-8 leading-relaxed">
+              {settings.payment_message}
+            </p>
+
+            <div className="bg-brand-cream p-6 rounded-3xl border-2 border-dashed border-brand-caramel/30 mb-8 space-y-4">
+              <div className="flex justify-between items-center text-sm">
+                <span className="font-bold text-brand-brown/60 uppercase tracking-wider">Valor do Sinal</span>
+                <span className="text-2xl font-bold text-brand-caramel">R$ {settings.signal_value}</span>
+              </div>
+              <div className="pt-4 border-t border-brand-caramel/10">
+                <span className="block text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 mb-2">Chave PIX</span>
+                <div 
+                  onClick={() => {
+                    navigator.clipboard.writeText(settings.pix_key);
+                    alert('Chave PIX copiada!');
+                  }}
+                  className="bg-white px-4 py-3 rounded-xl font-mono text-brand-brown border border-brand-brown/5 select-all cursor-pointer hover:bg-brand-gold/5 transition-colors flex items-center justify-between group"
+                >
+                  <span>{settings.pix_key}</span>
+                  <span className="text-[8px] uppercase font-bold text-brand-caramel opacity-0 group-hover:opacity-100 transition-opacity">Copiar</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <a 
+                href={getWhatsAppLink()} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="w-full bg-green-600 text-white py-5 rounded-2xl font-bold shadow-lg shadow-green-600/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
+              >
+                <MessageCircle size={24} />
+                Enviar Comprovante
+              </a>
+              <button 
+                onClick={() => setStep('home')}
+                className="text-brand-brown/60 font-bold hover:text-brand-brown transition-colors"
+              >
+                Voltar ao Início
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating WhatsApp Button */}
+      <a 
+        href={`https://wa.me/${settings.whatsapp_number}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-green-500 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform z-[60] group"
+        title="Falar no WhatsApp"
+      >
+        <MessageCircle size={28} />
+        <span className="absolute right-full mr-3 bg-white text-brand-brown px-3 py-1.5 rounded-lg text-xs font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-brand-brown/5">
+          Dúvidas? Chame no WhatsApp
+        </span>
+      </a>
+    </div>
   );
 }
 
@@ -734,9 +803,14 @@ function AdminView({
               <div key={res.id} className="bg-white p-6 rounded-3xl shadow-sm border border-brand-brown/5 grid md:grid-cols-4 gap-6 items-center">
                 <div className="space-y-1">
                   <h4 className="font-bold text-brand-brown">{res.name}</h4>
-                  <p className="text-xs text-brand-caramel flex items-center gap-1">
+                  <a 
+                    href={`https://wa.me/${res.whatsapp.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-brand-caramel flex items-center gap-1 hover:underline"
+                  >
                     <MessageCircle size={12} /> {res.whatsapp}
-                  </p>
+                  </a>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">{res.product}</p>
@@ -888,7 +962,7 @@ function AdminView({
             {images.map(img => (
               <div key={img.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-brand-brown/5 space-y-4">
                 <div className="aspect-[3/4] rounded-2xl overflow-hidden bg-brand-cream">
-                  <img src={img.url} alt={img.alt} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={img.url || null} alt={img.alt} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] uppercase tracking-widest font-bold text-brand-brown/40 ml-1">URL da Imagem {img.id}</label>
