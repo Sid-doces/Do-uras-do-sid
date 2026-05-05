@@ -183,6 +183,15 @@ async function startServer() {
     }
   });
 
+  app.delete("/api/reservations/:id", (req, res) => {
+    try {
+      db.prepare("DELETE FROM reservations WHERE id = ?").run(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // API Routes - Images
   app.get("/api/images", (req, res) => {
     try {

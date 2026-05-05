@@ -168,12 +168,6 @@ export default function App() {
             >
               Início
             </button>
-            <button 
-              onClick={() => setView('admin')}
-              className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${view === 'admin' ? 'bg-brand-brown text-brand-gold shadow-md' : 'text-brand-brown/60 hover:bg-brand-brown/5'}`}
-            >
-              Admin
-            </button>
           </nav>
         </div>
       </header>
@@ -238,7 +232,13 @@ export default function App() {
           </div>
         </div>
         <div className="max-w-5xl mx-auto mt-12 pt-8 border-t border-brand-gold/10 text-center text-[10px] uppercase tracking-widest opacity-40">
-          Doçuras do Sid &copy; {new Date().getFullYear()} — Todos os direitos reservados
+          <span 
+            className="cursor-default hover:opacity-100 transition-opacity"
+            onDoubleClick={() => setView('admin')}
+            title="Acesso Administrativo"
+          >
+            Doçuras do Sid
+          </span> &copy; {new Date().getFullYear()} — Todos os direitos reservados
         </div>
       </footer>
     </div>
@@ -694,6 +694,19 @@ function AdminView({
     }
   };
 
+  const handleDeleteReservation = async (id: number) => {
+    if (!confirm('Deseja realmente excluir este pedido?')) return;
+    try {
+      const res = await fetch(`/api/reservations/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchReservations();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao excluir pedido');
+    }
+  };
+
   const handleSaveCity = async (e: React.FormEvent) => {
     e.preventDefault();
     const url = editingCity ? `/api/cities/${editingCity.id}` : '/api/cities';
@@ -820,14 +833,15 @@ function AdminView({
                   <p className="text-xs font-bold text-brand-brown/60 uppercase tracking-widest">{res.city_name}</p>
                   <p className="text-[10px] text-brand-ink/40 italic">{res.observations || 'Sem observações'}</p>
                 </div>
-                <div>
+                <div className="flex items-center gap-4">
                   <select 
                     value={res.status}
                     onChange={(e) => handleUpdateStatus(res.id, e.target.value)}
-                    className={`w-full px-4 py-2 rounded-xl text-xs font-bold border-2 transition-all ${
+                    className={`flex-1 px-4 py-2 rounded-xl text-xs font-bold border-2 transition-all ${
                       res.status === 'Finalizado' ? 'bg-green-50 border-green-200 text-green-700' :
                       res.status === 'Confirmado' ? 'bg-blue-50 border-blue-200 text-blue-700' :
                       res.status === 'Aguardando pagamento' ? 'bg-yellow-50 border-yellow-200 text-yellow-700' :
+                      res.status === 'Cancelado' ? 'bg-red-50 border-red-200 text-red-700' :
                       'bg-brand-cream border-brand-brown/10 text-brand-brown'
                     }`}
                   >
@@ -835,7 +849,15 @@ function AdminView({
                     <option>Aguardando pagamento</option>
                     <option>Confirmado</option>
                     <option>Finalizado</option>
+                    <option>Cancelado</option>
                   </select>
+                  <button 
+                    onClick={() => handleDeleteReservation(res.id)}
+                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors shadow-sm"
+                    title="Excluir Pedido"
+                  >
+                    <Trash2 size={18} />
+                  </button>
                 </div>
               </div>
             ))}
